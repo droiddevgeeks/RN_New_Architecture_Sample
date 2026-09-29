@@ -68,12 +68,9 @@ export function CoreScreen() {
           }
         />
         <Row
-          label="Cashfree CashfreePgApi (legacy)"
-          value={String(cashfree.pgApi)}
-        />
-        <Row
-          label="Cashfree EventEmitter (legacy)"
-          value={String(cashfree.eventEmitter)}
+          label="Cashfree TurboModule"
+          value={String(cashfree.turboModule)}
+          tone={cashfree.turboModule ? 'success' : 'danger'}
         />
       </Card>
 

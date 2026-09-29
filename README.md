@@ -28,16 +28,36 @@ removed in RN 0.82, so there is no flag. The **TurboModule** tab reads
 
 ## Cashfree PG SDK (UPI Intent) — New Arch compatibility check
 
-`react-native-cashfree-pg-sdk@2.4.0` (+ `cashfree-pg-api-contract@2.1.1`) is integrated
+`react-native-cashfree-pg-sdk@3.0.0` (+ `cashfree-pg-api-contract@2.1.1`) is integrated
 on the **UPI** tab, UPI Intent only, in two flavours:
 
 - **Drop-in checkout** — `doUPIPayment(new CFUPIIntentCheckoutPayment(session, theme))`;
   Cashfree renders its own "Select UPI Application" sheet.
 - **Element payment** — `makePayment(new CFUPIPayment(session, new CFUPI(UPIMode.INTENT, appId)))`;
   the app lists apps via `getInstalledUpiApps()` and lets the user pick one (the SDK's
-  example just takes the last app in the list). The library is a **legacy bridge module** (no `codegenConfig`, no
-TurboModule spec), so on 0.87 it runs entirely through RN's legacy-module interop layer.
-The tab shows whether `NativeModules.CashfreePgApi` / `CashfreeEventEmitter` resolve.
+  example just takes the last app in the list).
+
+**Which SDK build:** 3.0.0 is **not on npm** (npm `latest` is still 2.4.0). It comes from the
+GitHub branch `cashfree/react-native-cashfree-pg-sdk#feature/new-architecture-repro-samples`,
+pinned in `package-lock.json` to commit `aa69cc8`. 3.0.0 is a real TurboModule:
+
+- codegen spec `src/NativeCashfreePgApi.ts` (`TurboModuleRegistry.getEnforcing('CashfreePgApi')`),
+  `codegenConfig` name `RNCashfreePgApiSpec`
+- Android: `CashfreePgApiModule extends NativeCashfreePgApiSpec`, registered by a
+  `TurboReactPackage` with `isTurboModule = true`
+- iOS: `CashfreePgApi` conforms to `NativeCashfreePgApiSpec` and returns
+  `NativeCashfreePgApiSpecJSI` from `getTurboModule:`
+- events (`cfSuccess` / `cfFailure` / `cfEvent`) come from the module itself
+  (`RCTDeviceEventEmitter` on Android, `RCTEventEmitter` on iOS). The separate iOS
+  `CashfreeEventEmitter` module from 2.x is gone.
+
+2.4.0 was a legacy bridge module that only worked through RN's interop layer. That verdict
+is in [`docs/cashfree-rn-sdk-new-arch-compatibility.md`](docs/cashfree-rn-sdk-new-arch-compatibility.md)
+and still applies to anyone on the npm release.
+
+The tab's **CASHFREE NATIVE MODULE** card shows `TurboModuleRegistry.get('CashfreePgApi')`
+(the lookup the SDK itself uses, and what the wrapper checks before any payment) next to the
+legacy `NativeModules` lookup, for comparison.
 
 Wrapper: `src/payments/CashfreeUpiCheckout.ts` turns the SDK's global callback into a
 Promise, blocks concurrent checkouts and rejects empty ids / missing app before native is
@@ -74,10 +94,23 @@ library needs it for. The Turbo tab's RUNTIME card shows the live native state.
 | Android | `./gradlew assembleDebug` | `./gradlew assembleDebug -PdisableLegacyInterop=true` |
 | iOS | normal launch | `xcrun simctl launch booted org.reactjs.native.example.RNNewArchSample -DisableLegacyInterop YES` (or add the argument to the Xcode scheme) |
 
-Result with interop OFF: this app's own TurboModule, C++ module and Fabric component keep
-working; the Cashfree SDK does not. `NativeModules.CashfreePgApi` is `null` on both
-platforms, and on iOS the SDK throws `new NativeEventEmitter() requires a non-null
-argument` as soon as it is first evaluated (opening the UPI tab).
+### Result with interop OFF (SDK 3.0.0 @ `aa69cc8`, verified 29 Sep 2026)
+
+The Cashfree SDK works as a direct TurboModule with no interop.
+
+| | Android (emulator, `-PdisableLegacyInterop=true`) | iOS (iPhone 16 sim, iOS 18.6, `-DisableLegacyInterop YES`) |
+|---|---|---|
+| Interop actually off | Turbo tab: `Legacy module interop: OFF (strict)` | log: `[LegacyInterop] Legacy module interop DISABLED via launch argument` |
+| Module resolves | `TurboModuleRegistry.get` → `true` | `TurboModuleRegistry.get` → `true` |
+| SDK loads (UPI tab) | yes | yes. The 2.4.0 `NativeEventEmitter` crash is gone |
+| `getInstalledUpiApps()` (Promise) | resolved: Cashfree UPI Simulator | resolved: empty list (no UPI apps on a simulator) |
+| Element UPI Intent payment, ₹1 sandbox | launched UPI Simulator → success → `cfSuccess` event → `onVerify(order_id)` | not run: needs a device with a UPI app |
+
+Not yet verified with interop off: the drop-in `doUPIPayment` flow, the iOS payment and
+event round-trip (needs a physical iPhone with a UPI app), and release builds.
+
+This app's own TurboModule, C++ module and Fabric component keep working with interop off,
+as before.
 
 ## Layout
 

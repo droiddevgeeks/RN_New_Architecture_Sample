@@ -118,22 +118,15 @@ export function UpiCheckoutScreen() {
       contentContainerStyle={styles.container}
       keyboardShouldPersistTaps="handled"
     >
-      <Card title="INTEROP (LEGACY MODULE ON NEW ARCH)">
+      <Card title="CASHFREE NATIVE MODULE">
         <Row
-          label="NativeModules.CashfreePgApi"
-          value={String(link.pgApi)}
-          tone={link.pgApi ? 'success' : 'danger'}
+          label="TurboModuleRegistry.get"
+          value={String(link.turboModule)}
+          tone={link.turboModule ? 'success' : 'danger'}
         />
         <Row
-          label="NativeModules.CashfreeEventEmitter"
-          value={String(link.eventEmitter)}
-          tone={
-            link.eventEmitter === false
-              ? 'danger'
-              : link.eventEmitter === true
-              ? 'success'
-              : undefined
-          }
+          label="NativeModules (legacy lookup)"
+          value={String(link.nativeModules)}
         />
       </Card>
 

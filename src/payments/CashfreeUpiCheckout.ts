@@ -1,4 +1,4 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules, TurboModuleRegistry } from 'react-native';
 import {
   CFEnvironment,
   CFSession,
@@ -61,19 +61,19 @@ export class UpiCheckoutError extends Error {
 }
 
 export type CashfreeLinkStatus = {
-  /** Legacy (non-TurboModule) module, reached through the New Arch interop layer. */
-  pgApi: boolean;
-  /** iOS-only RCTEventEmitter subclass that delivers the checkout callbacks. */
-  eventEmitter: boolean | 'n/a';
+  /** `TurboModuleRegistry.get('CashfreePgApi')` — the path the SDK itself uses (3.x). */
+  turboModule: boolean;
+  /**
+   * `NativeModules.CashfreePgApi` — the legacy lookup. With interop OFF this can be
+   * null even when the TurboModule resolves, so it is shown for comparison only.
+   */
+  nativeModules: boolean;
 };
 
 export function getCashfreeLinkStatus(): CashfreeLinkStatus {
   return {
-    pgApi: NativeModules.CashfreePgApi != null,
-    eventEmitter:
-      Platform.OS === 'ios'
-        ? NativeModules.CashfreeEventEmitter != null
-        : 'n/a',
+    turboModule: TurboModuleRegistry.get('CashfreePgApi') != null,
+    nativeModules: NativeModules.CashfreePgApi != null,
   };
 }
 
@@ -104,7 +104,7 @@ function validateSession(request: UpiCheckoutRequest): CFSession {
 }
 
 function assertLinked() {
-  if (!getCashfreeLinkStatus().pgApi) {
+  if (!getCashfreeLinkStatus().turboModule) {
     throw new UpiCheckoutError(
       'E_NATIVE_MODULE_MISSING',
       'CashfreePgApi native module is not linked — rebuild the app',
