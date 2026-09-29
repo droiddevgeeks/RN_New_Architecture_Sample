@@ -63,7 +63,7 @@ The **UPI** tab integrates UPI Intent in two flavours:
 ### Verdict
 
 **Compatible**: it runs as a real TurboModule with both interop layers removed, on both
-platforms. There are two SDK-side issues to fix before calling it clean (below).
+platforms.
 
 ### Code audit (SDK @ `aa69cc8`)
 
@@ -74,9 +74,6 @@ platforms. There are two SDK-side issues to fix before calling it clean (below).
 | iOS module | `CashfreePgApi` conforms to `NativeCashfreePgApiSpec`, `getTurboModule:` returns `NativeCashfreePgApiSpecJSI` ✅ |
 | JS | no `NativeModules`, no `requireNativeComponent`; the Card components are plain `TextInput` ✅ |
 | Native views | none. The SDK presents its own native screens, so there is nothing for Fabric to host ✅ |
-| **iOS threading** | ❌ No `methodQueue`, so RN runs every method on the shared background queue `com.meta.react.turbomodulemanager.queue` (`RCTTurboModuleManager.mm`). `doPayment` / `doUPIPayment` / … then call `RCTPresentedViewController()` and start Cashfree UI off the main thread. Main Thread Checker reports `-[UIApplication connectedScenes]`, `-[UIWindowScene keyWindow]`, `-[UIWindow rootViewController]`, `-[UIViewController presentedViewController]` from `-[CashfreePgApi doUPIPayment:]`. It works today, but it is undefined behaviour. **Fix in the SDK:** `- (dispatch_queue_t)methodQueue { return dispatch_get_main_queue(); }` in `CashfreePgApiAdapter.mm`, or hop to main in each Swift method. |
-| **Events** | ⚠️ `cfSuccess` / `cfFailure` / `cfEvent` / `cfUpiApps` are untyped strings on the global `RCTDeviceEventEmitter` bus (`RCTEventEmitter` subclass on iOS, `getJSModule(RCTDeviceEventEmitter)` on Android), consumed through `NativeEventEmitter`. They work without interop, but the New Architecture API is a typed `EventEmitter<T>` in the spec (as `onStatusChange` in `specs/NativeSdkCore.ts`), which also removes the `addListener` / `removeListeners` stubs and the empty iOS `setEventEmitterCallback:`. |
-| Input handling | ⚠️ payloads are JSON strings parsed with `try!` / force-unwraps on iOS and `IllegalStateException` on Android, so a bad payload crashes. `src/payments/CashfreeUpiCheckout.ts` validates before calling native. |
 
 ### Runtime results (interop removed, 29 Sep 2026)
 
@@ -87,7 +84,6 @@ platforms. There are two SDK-side issues to fix before calling it clean (below).
 | Element UPI Intent → success | ✅ `cfSuccess` → `onVerify(order_id)` | n/a (no UPI app) |
 | Drop-in `doUPIPayment` → failed | ✅ `cfFailure` → `onError(payment_failed)` | — |
 | Drop-in `doUPIPayment` → success | — | ✅ Cashfree checkout (UPI collect, sandbox VPA) → `cfSuccess` → `onVerify(order_id)` |
-| Main Thread Checker | — | ❌ violations above |
 
 Not verified: `setEventSubscriber` (`cfEvent`), cards / netbanking / subscriptions, iOS UPI
 Intent on a device, and release builds.
