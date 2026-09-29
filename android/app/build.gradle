@@ -84,10 +84,6 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
-        // -PdisableLegacyInterop=true runs RN with its legacy-module interop layer OFF
-        // ("strict" New Architecture). Default false = RN's stable default (interop ON).
-        buildConfigField "boolean", "DISABLE_LEGACY_INTEROP",
-            (project.findProperty("disableLegacyInterop") == "true").toString()
     }
     signingConfigs {
         debug {

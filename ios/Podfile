@@ -5,6 +5,11 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
+# Build React Native core from source: the prebuilt React.framework ships with both interop
+# layers compiled in, so the RCT_REMOVE_LEGACY_*_INTEROP flags in post_install would not
+# reach it. Slower first build, but the interop code is actually gone from the app.
+ENV['RCT_USE_PREBUILT_RNCORE'] = '0'
+
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
@@ -30,5 +35,11 @@ target 'RNNewArchSample' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # New Architecture only: compile both interop layers out of React Native, so a
+    # non-TurboModule module or non-Fabric view fails at build/run time instead of
+    # silently falling back.
+    ReactNativePodsUtils.add_compiler_flag_to_project(installer, "-DRCT_REMOVE_LEGACY_MODULE_INTEROP=1")
+    ReactNativePodsUtils.add_compiler_flag_to_project(installer, "-DRCT_REMOVE_LEGACY_COMPONENT_INTEROP=1")
   end
 end

@@ -2,13 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-React Native **0.87.1** / React 19.2.3 / Hermes sample app that shows every New Architecture primitive an SDK needs (Turbo Native Module, C++ Turbo Module, Fabric component), plus a New Arch compatibility check of `react-native-cashfree-pg-sdk` (UPI Intent). `README.md` is the detailed reference, including the strict-mode results; `docs/cashfree-rn-sdk-new-arch-compatibility.md` is the verdict on the npm 2.4.0 (legacy) release.
+React Native **0.87.1** / React 19.2.3 / Hermes sample app that shows every New Architecture primitive an SDK needs (Turbo Native Module, C++ Turbo Module, Fabric component), plus a New Architecture compatibility check of `react-native-cashfree-pg-sdk` 3.0.0 (UPI Intent). **New Architecture only:** RN's interop layers are removed, so there is no fallback path. `README.md` has the SDK audit and runtime results.
 
 ## Commands
 
 ```sh
 npm install                      # postinstall creates src/dev/cashfreeSandbox.local.ts from the .example.ts
-cd ios && bundle install && bundle exec pod install && cd ..
+cd ios && bundle install && bundle exec pod install && cd ..   # RN core builds from source: first iOS build ~6 min
 npm start                        # Metro
 npm run ios | npm run android
 npm run lint                     # eslint .
@@ -17,9 +17,6 @@ npm run typecheck                # tsc --noEmit
 
 - There is **no test suite** (no Jest). `tsconfig.json` overrides `types: []` because `@react-native/typescript-config` forces `jest`. Verification = `typecheck` + `lint` + running the app.
 - After editing anything in `specs/`, re-run `pod install` for iOS. Android regenerates codegen on Gradle build.
-- Strict mode (RN's legacy-module interop OFF):
-  - Android: `cd android && ./gradlew assembleDebug -PdisableLegacyInterop=true` (wired in `android/app/build.gradle`)
-  - iOS: `xcrun simctl launch booted org.reactjs.native.example.RNNewArchSample -DisableLegacyInterop YES` (read in `ios/RNNewArchSample/AppDelegate.swift`)
 - Sandbox order (keys stay on your machine): `CASHFREE_CLIENT_ID=... CASHFREE_CLIENT_SECRET=... node scripts/create-sandbox-order.mjs 1`
 
 ## Architecture
@@ -37,10 +34,10 @@ Adding a new module/component means touching all of: the spec, `codegenConfig.io
 
 ### Cashfree PG SDK integration
 
-- The SDK is **3.0.0 from the GitHub branch `feature/new-architecture-repro-samples`** (pinned in `package-lock.json`), not npm (npm `latest` is 2.4.0, a legacy bridge module). 3.0.0 is a real TurboModule (`RNCashfreePgApiSpec`, `TurboModuleRegistry.getEnforcing('CashfreePgApi')`) and works with interop OFF. Don't reintroduce `NativeModules.CashfreeEventEmitter` checks: that iOS module no longer exists.
-- Link checks go through `TurboModuleRegistry.get('CashfreePgApi')` (`getCashfreeLinkStatus().turboModule`). `NativeModules` is shown only for comparison.
+- The SDK is **3.0.0 from the GitHub branch `feature/new-architecture-repro-samples`**, pinned in `package-lock.json`. It is not on npm. It's a real TurboModule (`RNCashfreePgApiSpec`). The availability check is `isCashfreeTurboModuleAvailable()` (`TurboModuleRegistry.get('CashfreePgApi')`). Never use `NativeModules`.
+- Known SDK issue: on iOS its methods run on RN's shared background TurboModule queue (no `methodQueue`), so it calls UIKit off the main thread. It's an SDK bug; don't work around it in app code.
 - `src/payments/CashfreeUpiCheckout.ts` wraps the SDK's global callback into a Promise, blocks concurrent checkouts, and validates ids/app **before** calling native (Android throws `IllegalStateException` from the `@ReactMethod`, iOS force-unwraps on bad input). `getInstalledUpiApps()` has a 5 s timeout because on iOS `removeCallback()` also tears down the app-list listener. Keep these guards.
-- UPI Intent needs a real UPI app; simulators/emulators only reach the error callback.
+- The Android emulator can complete UPI Intent payments with the Cashfree UPI Simulator app installed. The iOS simulator has no UPI apps, so only the drop-in flow completes there (via UPI collect).
 
 ## Gotchas
 
@@ -48,4 +45,7 @@ Adding a new module/component means touching all of: the spec, `codegenConfig.io
 - Fabric command specs must write `React.ComponentRef<HostComponent<NativeProps>>` inline; codegen rejects a type alias.
 - Codegen module specs don't support string-literal unions. `env` is `string` in the spec, narrowed to `'SANDBOX' | 'PROD'` in the facade, and validated natively.
 - Importing `RNNewArchSample-Swift.h` from `.mm` fails unless the ObjC superclass of `AppDelegate.swift`'s `ReactNativeDelegate` is imported first. See `ios/Sdk/SdkSwiftBridge.h`.
-- Bridgeless/Fabric/TurboModules are always on (legacy arch was removed in RN 0.82), so there is no new-arch flag to toggle. The only switch is the legacy interop layer described above. iOS confirms it is off with the log line `[LegacyInterop] Legacy module interop DISABLED via launch argument`.
+- **Interop removal, and don't undo it:**
+  - iOS: `ios/Podfile` compiles both layers out (`RCT_REMOVE_LEGACY_MODULE_INTEROP` and `RCT_REMOVE_LEGACY_COMPONENT_INTEROP`). It also sets `RCT_USE_PREBUILT_RNCORE=0`, because the prebuilt `React.framework` has interop compiled in and turns it on at startup. With the prebuilt core the flags silently do nothing for RN itself.
+  - Android: `MainApplication.disableInteropLayers()` forces `useTurboModuleInterop` and `useFabricInterop` to `false`.
+  - A dependency that isn't a real TurboModule or Fabric component must fail here. Don't add a fallback.

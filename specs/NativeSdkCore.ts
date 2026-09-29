@@ -27,8 +27,6 @@ export interface Spec extends TurboModule {
   getConstants(): {
     sdkName: string;
     platform: string;
-    /** Whether RN's legacy-module interop layer is on (read from native, not JS). */
-    legacyModuleInterop: boolean;
   };
   getSdkVersion(): string;
   initialize(config: SdkConfig): Promise<void>;

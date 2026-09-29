@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text } from 'react-native';
 import { SdkCore, SdkError } from '../sdk';
 import type { SdkSession } from '../sdk';
 import { getArchitectureInfo } from '../runtime/architecture';
-import { getCashfreeLinkStatus } from '../payments/CashfreeUpiCheckout';
+import { isCashfreeTurboModuleAvailable } from '../payments/CashfreeUpiCheckout';
 import { ActionButton, Card, Row, colors } from './ui';
 
 type Result =
@@ -23,7 +23,7 @@ export function CoreScreen() {
   const [session, setSession] = useState<SdkSession | null>(null);
 
   const arch = getArchitectureInfo();
-  const cashfree = getCashfreeLinkStatus();
+  const cashfreeTurboModule = isCashfreeTurboModuleAvailable();
   const constants = SdkCore.getConstants();
   const version = SdkCore.getVersion();
 
@@ -62,15 +62,9 @@ export function CoreScreen() {
           tone={arch.fabric ? 'success' : 'danger'}
         />
         <Row
-          label="Legacy module interop"
-          value={
-            constants.legacyModuleInterop ? 'ON (RN default)' : 'OFF (strict)'
-          }
-        />
-        <Row
           label="Cashfree TurboModule"
-          value={String(cashfree.turboModule)}
-          tone={cashfree.turboModule ? 'success' : 'danger'}
+          value={String(cashfreeTurboModule)}
+          tone={cashfreeTurboModule ? 'success' : 'danger'}
         />
       </Card>
 

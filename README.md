@@ -12,9 +12,29 @@ primitive an SDK needs, generated from typed codegen specs:
 The C++ module has a single implementation in `shared/NativeSdkCrypto.{h,cpp}`,
 compiled into both apps.
 
-Bridgeless mode, Fabric and TurboModules are always on — the legacy architecture was
-removed in RN 0.82, so there is no flag. The **TurboModule** tab reads
-`RN$Bridgeless` / `nativeFabricUIManager` at runtime to prove it.
+Bridgeless mode, Fabric and TurboModules are always on in RN 0.82+, with no flag. On top of
+that, this app **removes RN's interop layers** (see below), so every native module must be
+a real TurboModule and every native view a real Fabric component. There is no fallback.
+The **Turbo** tab reads `RN$Bridgeless` / `nativeFabricUIManager` at runtime.
+
+## New Architecture only: interop layers removed
+
+| | TurboModule interop | Fabric (view) interop | How |
+|---|---|---|---|
+| iOS | compiled out | compiled out | `ios/Podfile`: `-DRCT_REMOVE_LEGACY_MODULE_INTEROP=1` and `-DRCT_REMOVE_LEGACY_COMPONENT_INTEROP=1`, with `RCT_USE_PREBUILT_RNCORE=0` so React Native core is built from source |
+| Android | off | off | `MainApplication.disableInteropLayers()`: `useTurboModuleInterop()` and `useFabricInterop()` forced `false` before the `ReactHost` is created |
+
+Why iOS builds RN core from source: the prebuilt `React.framework` ships with the interop
+code compiled in, and at startup its `RCTRootViewFactory` turns module interop on. With the
+prebuilt core the compile flags only reach app and library code. Checked on a from-source
+build: `RCTEnableTurboModuleInterop`, `RCTInteropTurboModule`, `provideLegacyModule`,
+`RCTEnableFabricInteropLayer` and `RCTLegacyViewManagerInteropComponentView` are absent
+from every binary in the `.app`, while `RCTTurboModuleManager` / `RCTHost` are present.
+The first iOS build takes about 6 min.
+
+Android ships RN as a prebuilt AAR, so it has no compile-time switch. The flag override
+is the supported mechanism, and at runtime it reads `useTurboModuleInterop=false`,
+`useFabricInterop=false`.
 
 ## What each piece demonstrates
 
@@ -26,44 +46,61 @@ removed in RN 0.82, so there is no flag. The **TurboModule** tab reads
 - **PayButton** — typed props (incl. a `WithDefault` string-union enum), a direct
   event (`onPayPress`) and a view command (`setLoading`).
 
-## Cashfree PG SDK (UPI Intent) — New Arch compatibility check
+## Cashfree PG SDK 3.0.0 (GitHub branch), New Architecture compatibility
 
-`react-native-cashfree-pg-sdk@3.0.0` (+ `cashfree-pg-api-contract@2.1.1`) is integrated
-on the **UPI** tab, UPI Intent only, in two flavours:
+**SDK under test:** `react-native-cashfree-pg-sdk@3.0.0` from
+`cashfree/react-native-cashfree-pg-sdk#feature/new-architecture-repro-samples`, pinned in
+`package-lock.json` to commit `aa69cc8`. It is not on npm (npm `latest` is 2.4.0).
+Used with `cashfree-pg-api-contract@2.1.1`.
 
-- **Drop-in checkout** — `doUPIPayment(new CFUPIIntentCheckoutPayment(session, theme))`;
-  Cashfree renders its own "Select UPI Application" sheet.
-- **Element payment** — `makePayment(new CFUPIPayment(session, new CFUPI(UPIMode.INTENT, appId)))`;
-  the app lists apps via `getInstalledUpiApps()` and lets the user pick one (the SDK's
-  example just takes the last app in the list).
+The **UPI** tab integrates UPI Intent in two flavours:
 
-**Which SDK build:** 3.0.0 is **not on npm** (npm `latest` is still 2.4.0). It comes from the
-GitHub branch `cashfree/react-native-cashfree-pg-sdk#feature/new-architecture-repro-samples`,
-pinned in `package-lock.json` to commit `aa69cc8`. 3.0.0 is a real TurboModule:
+- **Drop-in checkout**: `doUPIPayment(new CFUPIIntentCheckoutPayment(session, theme))`.
+  Cashfree renders its own UPI app sheet.
+- **Element payment**: `makePayment(new CFUPIPayment(session, new CFUPI(UPIMode.INTENT, appId)))`.
+  The app lists apps via `getInstalledUpiApps()` and the user picks one.
 
-- codegen spec `src/NativeCashfreePgApi.ts` (`TurboModuleRegistry.getEnforcing('CashfreePgApi')`),
-  `codegenConfig` name `RNCashfreePgApiSpec`
-- Android: `CashfreePgApiModule extends NativeCashfreePgApiSpec`, registered by a
-  `TurboReactPackage` with `isTurboModule = true`
-- iOS: `CashfreePgApi` conforms to `NativeCashfreePgApiSpec` and returns
-  `NativeCashfreePgApiSpecJSI` from `getTurboModule:`
-- events (`cfSuccess` / `cfFailure` / `cfEvent`) come from the module itself
-  (`RCTDeviceEventEmitter` on Android, `RCTEventEmitter` on iOS). The separate iOS
-  `CashfreeEventEmitter` module from 2.x is gone.
+### Verdict
 
-2.4.0 was a legacy bridge module that only worked through RN's interop layer. That verdict
-is in [`docs/cashfree-rn-sdk-new-arch-compatibility.md`](docs/cashfree-rn-sdk-new-arch-compatibility.md)
-and still applies to anyone on the npm release.
+**Compatible**: it runs as a real TurboModule with both interop layers removed, on both
+platforms. There are two SDK-side issues to fix before calling it clean (below).
 
-The tab's **CASHFREE NATIVE MODULE** card shows `TurboModuleRegistry.get('CashfreePgApi')`
-(the lookup the SDK itself uses, and what the wrapper checks before any payment) next to the
-legacy `NativeModules` lookup, for comparison.
+### Code audit (SDK @ `aa69cc8`)
 
-Wrapper: `src/payments/CashfreeUpiCheckout.ts` turns the SDK's global callback into a
-Promise, blocks concurrent checkouts and rejects empty ids / missing app before native is
-touched (the Android element flow throws `IllegalStateException` out of the `@ReactMethod`
-on a bad payload; iOS force-unwraps). `getInstalledUpiApps()` has a 5 s timeout because on
-iOS the SDK's `removeCallback()` also tears down the app-list listener.
+| Area | Finding |
+|---|---|
+| Spec | `src/NativeCashfreePgApi.ts`, `TurboModuleRegistry.getEnforcing('CashfreePgApi')`, `codegenConfig` `RNCashfreePgApiSpec` (`type: modules`) ✅ |
+| Android module | `CashfreePgApiModule extends NativeCashfreePgApiSpec`; `TurboReactPackage` with `isTurboModule = true` ✅ |
+| iOS module | `CashfreePgApi` conforms to `NativeCashfreePgApiSpec`, `getTurboModule:` returns `NativeCashfreePgApiSpecJSI` ✅ |
+| JS | no `NativeModules`, no `requireNativeComponent`; the Card components are plain `TextInput` ✅ |
+| Native views | none. The SDK presents its own native screens, so there is nothing for Fabric to host ✅ |
+| **iOS threading** | ❌ No `methodQueue`, so RN runs every method on the shared background queue `com.meta.react.turbomodulemanager.queue` (`RCTTurboModuleManager.mm`). `doPayment` / `doUPIPayment` / … then call `RCTPresentedViewController()` and start Cashfree UI off the main thread. Main Thread Checker reports `-[UIApplication connectedScenes]`, `-[UIWindowScene keyWindow]`, `-[UIWindow rootViewController]`, `-[UIViewController presentedViewController]` from `-[CashfreePgApi doUPIPayment:]`. It works today, but it is undefined behaviour. **Fix in the SDK:** `- (dispatch_queue_t)methodQueue { return dispatch_get_main_queue(); }` in `CashfreePgApiAdapter.mm`, or hop to main in each Swift method. |
+| **Events** | ⚠️ `cfSuccess` / `cfFailure` / `cfEvent` / `cfUpiApps` are untyped strings on the global `RCTDeviceEventEmitter` bus (`RCTEventEmitter` subclass on iOS, `getJSModule(RCTDeviceEventEmitter)` on Android), consumed through `NativeEventEmitter`. They work without interop, but the New Architecture API is a typed `EventEmitter<T>` in the spec (as `onStatusChange` in `specs/NativeSdkCore.ts`), which also removes the `addListener` / `removeListeners` stubs and the empty iOS `setEventEmitterCallback:`. |
+| Input handling | ⚠️ payloads are JSON strings parsed with `try!` / force-unwraps on iOS and `IllegalStateException` on Android, so a bad payload crashes. `src/payments/CashfreeUpiCheckout.ts` validates before calling native. |
+
+### Runtime results (interop removed, 29 Sep 2026)
+
+| Check | Android (emulator) | iOS (iPhone 16 sim, iOS 18.6) |
+|---|---|---|
+| `TurboModuleRegistry.get('CashfreePgApi')` | ✅ | ✅ |
+| `getInstalledUpiApps()` (Promise) | ✅ Cashfree UPI Simulator | ✅ empty list (no UPI apps on a simulator) |
+| Element UPI Intent → success | ✅ `cfSuccess` → `onVerify(order_id)` | n/a (no UPI app) |
+| Drop-in `doUPIPayment` → failed | ✅ `cfFailure` → `onError(payment_failed)` | — |
+| Drop-in `doUPIPayment` → success | — | ✅ Cashfree checkout (UPI collect, sandbox VPA) → `cfSuccess` → `onVerify(order_id)` |
+| Main Thread Checker | — | ❌ violations above |
+
+Not verified: `setEventSubscriber` (`cfEvent`), cards / netbanking / subscriptions, iOS UPI
+Intent on a device, and release builds.
+
+This app's own TurboModule (sync, Promise, typed events), C++ module and Fabric component
+(props, direct event, view command) were re-checked on the same builds.
+
+### Running a payment
+
+`src/payments/CashfreeUpiCheckout.ts` turns the SDK's global callback into a Promise,
+checks the TurboModule is registered, blocks concurrent checkouts, and rejects empty ids or
+a missing app before native is touched. `getInstalledUpiApps()` has a 5 s timeout because
+on iOS the SDK's `removeCallback()` also tears down the app-list listener.
 
 Create a sandbox order on your machine (keys stay out of the app):
 
@@ -74,43 +111,12 @@ CASHFREE_CLIENT_ID=... CASHFREE_CLIENT_SECRET=... node scripts/create-sandbox-or
 Or, in **debug builds only**, tap *Create ₹1 sandbox order & prefill* on the UPI tab. Keys
 live in the gitignored `src/dev/cashfreeSandbox.local.ts` (created from the `.example.ts`
 on `npm install`). The `require` sits inside a literal `if (__DEV__)` block so Metro drops
-it from release bundles — verified by grepping `--dev false` bundles for the key.
+it from release bundles, verified by grepping `--dev false` bundles for the key.
 Keep it that way: an early-return guard left the key in the release bundle.
 
-Otherwise paste `order_id` + `payment_session_id` into the UPI tab. UPI Intent needs a real UPI
-app, so a full payment needs a physical device; simulators/emulators reach the SDK's
-error callback.
-
-## Strict mode: run with RN's legacy-module interop OFF
-
-RN 0.87 keeps legacy (non-TurboModule) native modules alive through an interop layer that
-is **on by default** (Android: `ReactNativeFeatureFlagsOverrides_RNOSS_Stable_Android`;
-iOS: `RCTRootViewFactory` calls `RCTEnableTurboModuleInterop(YES)`). This repo sets no
-legacy flags of its own; the switches below turn that framework default off to see what a
-library needs it for. The Turbo tab's RUNTIME card shows the live native state.
-
-| | Interop ON (RN default) | Interop OFF (strict) |
-|---|---|---|
-| Android | `./gradlew assembleDebug` | `./gradlew assembleDebug -PdisableLegacyInterop=true` |
-| iOS | normal launch | `xcrun simctl launch booted org.reactjs.native.example.RNNewArchSample -DisableLegacyInterop YES` (or add the argument to the Xcode scheme) |
-
-### Result with interop OFF (SDK 3.0.0 @ `aa69cc8`, verified 29 Sep 2026)
-
-The Cashfree SDK works as a direct TurboModule with no interop.
-
-| | Android (emulator, `-PdisableLegacyInterop=true`) | iOS (iPhone 16 sim, iOS 18.6, `-DisableLegacyInterop YES`) |
-|---|---|---|
-| Interop actually off | Turbo tab: `Legacy module interop: OFF (strict)` | log: `[LegacyInterop] Legacy module interop DISABLED via launch argument` |
-| Module resolves | `TurboModuleRegistry.get` → `true` | `TurboModuleRegistry.get` → `true` |
-| SDK loads (UPI tab) | yes | yes. The 2.4.0 `NativeEventEmitter` crash is gone |
-| `getInstalledUpiApps()` (Promise) | resolved: Cashfree UPI Simulator | resolved: empty list (no UPI apps on a simulator) |
-| Element UPI Intent payment, ₹1 sandbox | launched UPI Simulator → success → `cfSuccess` event → `onVerify(order_id)` | not run: needs a device with a UPI app |
-
-Not yet verified with interop off: the drop-in `doUPIPayment` flow, the iOS payment and
-event round-trip (needs a physical iPhone with a UPI app), and release builds.
-
-This app's own TurboModule, C++ module and Fabric component keep working with interop off,
-as before.
+Otherwise paste `order_id` + `payment_session_id` into the UPI tab. UPI Intent needs a UPI
+app: the Android emulator works with the Cashfree UPI Simulator installed; on the iOS
+simulator only the drop-in flow can complete (via UPI collect).
 
 ## Layout
 
@@ -135,7 +141,7 @@ Registration:
 
 ```sh
 npm install
-cd ios && bundle install && bundle exec pod install && cd ..
+cd ios && bundle install && bundle exec pod install && cd ..   # first iOS build compiles RN core (~6 min)
 npm start
 npm run ios       # or: npm run android
 ```
