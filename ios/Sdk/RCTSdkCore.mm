@@ -2,8 +2,6 @@
 
 #import "SdkSwiftBridge.h"
 
-#import <React/RCTBridge.h>
-
 using namespace facebook::react;
 
 @implementation RCTSdkCore {
@@ -42,7 +40,6 @@ using namespace facebook::react;
   return typedConstants<JS::NativeSdkCore::Constants>({
       .sdkName = SdkCoreImpl.sdkName,
       .platform = @"ios",
-      .legacyModuleInterop = RCTTurboModuleInteropEnabled() ? true : false,
   });
 }
 

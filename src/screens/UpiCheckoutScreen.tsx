@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import {
   UpiCheckoutError,
-  getCashfreeLinkStatus,
+  isCashfreeTurboModuleAvailable,
   getInstalledUpiApps,
   startUpiIntentCheckout,
   startUpiIntentPayment,
@@ -46,7 +46,7 @@ export function UpiCheckoutScreen() {
   const [appsError, setAppsError] = useState<string | null>(null);
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
 
-  const link = getCashfreeLinkStatus();
+  const turboModule = isCashfreeTurboModuleAvailable();
 
   const loadApps = useCallback(async () => {
     setAppsError(null);
@@ -118,15 +118,11 @@ export function UpiCheckoutScreen() {
       contentContainerStyle={styles.container}
       keyboardShouldPersistTaps="handled"
     >
-      <Card title="CASHFREE NATIVE MODULE">
+      <Card title="CASHFREE TURBOMODULE">
         <Row
-          label="TurboModuleRegistry.get"
-          value={String(link.turboModule)}
-          tone={link.turboModule ? 'success' : 'danger'}
-        />
-        <Row
-          label="NativeModules (legacy lookup)"
-          value={String(link.nativeModules)}
+          label="TurboModuleRegistry.get('CashfreePgApi')"
+          value={String(turboModule)}
+          tone={turboModule ? 'success' : 'danger'}
         />
       </Card>
 

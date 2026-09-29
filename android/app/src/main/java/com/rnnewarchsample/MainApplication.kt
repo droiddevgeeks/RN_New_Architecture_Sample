@@ -1,7 +1,6 @@
 package com.rnnewarchsample
 
 import android.app.Application
-import android.util.Log
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
@@ -27,25 +26,20 @@ class MainApplication : Application(), ReactApplication {
   override fun onCreate() {
     super.onCreate()
     loadReactNative(this)
-    if (BuildConfig.DISABLE_LEGACY_INTEROP) {
-      disableLegacyModuleInterop()
-    }
+    disableInteropLayers()
   }
 
   /**
-   * Compatibility experiment: RN's stable channel is exactly
-   * [ReactNativeNewArchitectureFeatureFlagsDefaults]; this is the same set with only the
-   * legacy-module interop layer switched off. Must run before the ReactHost is created.
+   * New Architecture only: RN's stable defaults minus both interop layers, so a module that
+   * is not a real TurboModule (or a view that is not a Fabric component) fails instead of
+   * silently falling back. Must run before the ReactHost is created.
    */
-  private fun disableLegacyModuleInterop() {
-    val alreadyRead =
-        ReactNativeFeatureFlags.dangerouslyForceOverride(
-            object : ReactNativeNewArchitectureFeatureFlagsDefaults() {
-              override fun useTurboModuleInterop(): Boolean = false
-            })
-    Log.w(
-        "LegacyInterop",
-        "Legacy module interop DISABLED (flags read before override: ${alreadyRead ?: "none"})",
-    )
+  private fun disableInteropLayers() {
+    ReactNativeFeatureFlags.dangerouslyForceOverride(
+        object : ReactNativeNewArchitectureFeatureFlagsDefaults() {
+          override fun useTurboModuleInterop(): Boolean = false
+
+          override fun useFabricInterop(): Boolean = false
+        })
   }
 }

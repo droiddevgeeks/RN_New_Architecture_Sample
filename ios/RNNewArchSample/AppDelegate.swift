@@ -34,19 +34,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 }
 
 class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {
-  override func sourceURL(for bridge: RCTBridge) -> URL? {
-    self.bundleURL()
-  }
-
   override func bundleURL() -> URL? {
-    // RCTHost.start calls this after RCTRootViewFactory has enabled the legacy-module
-    // interop layer and *before* it creates RCTInstance / RCTTurboModuleManager, so this
-    // is the one deterministic point to switch interop off for the compatibility check.
-    // Launch with `-DisableLegacyInterop YES` to run "strict" New Architecture.
-    if UserDefaults.standard.bool(forKey: "DisableLegacyInterop") {
-      RCTEnableTurboModuleInterop(false)
-      NSLog("[LegacyInterop] Legacy module interop DISABLED via launch argument")
-    }
 #if DEBUG
     return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
 #else

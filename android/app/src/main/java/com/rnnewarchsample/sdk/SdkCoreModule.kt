@@ -4,7 +4,6 @@ import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
-import com.facebook.react.internal.featureflags.ReactNativeFeatureFlags
 import com.rnnewarchsample.specs.NativeSdkCoreSpec
 
 /** Turbo Native Module adapter: generated [NativeSdkCoreSpec] -> [SdkCore]. */
@@ -18,7 +17,6 @@ class SdkCoreModule(reactContext: ReactApplicationContext) : NativeSdkCoreSpec(r
       mapOf(
           "sdkName" to SdkCore.SDK_NAME,
           "platform" to "android",
-          "legacyModuleInterop" to ReactNativeFeatureFlags.useTurboModuleInterop(),
       )
 
   override fun getSdkVersion(): String = SdkCore.SDK_VERSION

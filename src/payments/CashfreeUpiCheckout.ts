@@ -1,4 +1,4 @@
-import { NativeModules, TurboModuleRegistry } from 'react-native';
+import { TurboModuleRegistry } from 'react-native';
 import {
   CFEnvironment,
   CFSession,
@@ -60,21 +60,9 @@ export class UpiCheckoutError extends Error {
   }
 }
 
-export type CashfreeLinkStatus = {
-  /** `TurboModuleRegistry.get('CashfreePgApi')` — the path the SDK itself uses (3.x). */
-  turboModule: boolean;
-  /**
-   * `NativeModules.CashfreePgApi` — the legacy lookup. With interop OFF this can be
-   * null even when the TurboModule resolves, so it is shown for comparison only.
-   */
-  nativeModules: boolean;
-};
-
-export function getCashfreeLinkStatus(): CashfreeLinkStatus {
-  return {
-    turboModule: TurboModuleRegistry.get('CashfreePgApi') != null,
-    nativeModules: NativeModules.CashfreePgApi != null,
-  };
+/** True when the SDK's `CashfreePgApi` TurboModule is registered (the lookup the SDK itself uses). */
+export function isCashfreeTurboModuleAvailable(): boolean {
+  return TurboModuleRegistry.get('CashfreePgApi') != null;
 }
 
 const UPI_APPS_TIMEOUT_MS = 5000;
@@ -104,7 +92,7 @@ function validateSession(request: UpiCheckoutRequest): CFSession {
 }
 
 function assertLinked() {
-  if (!getCashfreeLinkStatus().turboModule) {
+  if (!isCashfreeTurboModuleAvailable()) {
     throw new UpiCheckoutError(
       'E_NATIVE_MODULE_MISSING',
       'CashfreePgApi native module is not linked — rebuild the app',
